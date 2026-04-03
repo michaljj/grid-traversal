@@ -9,7 +9,8 @@
 int main()
 {
     Grid_st* grid = makeGrid(gridC, gridR, blockers, (sizeof(blockers)/sizeof(Point_st)));
-    printGrid(grid);
+    findWinner(grid, MPs);
+    
     cleanUp(grid);
     return 0;
 }

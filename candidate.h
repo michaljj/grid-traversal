@@ -13,6 +13,8 @@
 #define BIT_CHECK(arr, row, col, cols)  ((arr)[CELL_IDX(row, col, cols) / 8] &   (1 << (CELL_IDX(row, col, cols) % 8)))
 #define BIT_CLEAR(arr, row, col, cols)  ((arr)[CELL_IDX(row, col, cols) / 8] &= ~(1 << (CELL_IDX(row, col, cols) % 8)))
 
+
+
 typedef struct Point_st
 {
     int x;
@@ -37,13 +39,22 @@ typedef struct Candidate_st
 }Candidate_st;
 
 
-Candidate_st* newCandidate(int x, int y, int maxSteps, bool** grid);
+extern Candidate_st* currBeam[B];
+extern Candidate_st* nextBeam[B * 4];
+extern int currBeamSize;
+extern int nextBeamSize;
+
+void newCandidate(int x, int y, int maxSteps, bool** grid);
 
 Candidate_st* copyCandidate(Candidate_st* cand, int x, int y, bool** grid);
 
 void freeCandidate(Candidate_st* cand);
 
-int lookaheadBFS(Point_st* pos, uint8_t* vis, int stepsLeft, bool** grid);
+int lookaheadBFS_ext(Point_st* pos, int stepsLeft, bool** grid);
 
+void sortBeam(bool curr);
+
+void candidatesInit(int maxX, int maxY, int maxStep);
+void candidatesUninit();
 
 #endif //CANDIDATE_H
