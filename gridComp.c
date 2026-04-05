@@ -3,210 +3,299 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const int DELTA_ROW[NUM_DIRECTIONS] = {-1, 1, 0, 0};
+static const int DELTA_COL[NUM_DIRECTIONS] = {0, 0, -1, 1};
 
-static int compareStartPoints(const void* a, const void* b)
+typedef struct StartPoint_st
 {
-    const StartPoint_st* sa = (const StartPoint_st*)a;
-    const StartPoint_st* sb = (const StartPoint_st*)b;
-    if (sb->score > sa->score) return  1;
-    if (sb->score < sa->score) return -1;
+    Point_st point;
+    int score;
+} StartPoint_st;
+
+static int compareStartPoints(const void *a, const void *b)
+{
+    const StartPoint_st *sa = (const StartPoint_st *)a;
+    const StartPoint_st *sb = (const StartPoint_st *)b;
+    if (sb->score > sa->score)
+        return 1;
+    if (sb->score < sa->score)
+        return -1;
     return 0;
 }
 
-Grid_st* makeGrid(int GC, int GR, Point_st* BL, int BLn)
+Grid_st *makeGrid(int numRows, int numCols,
+                  const Point_st *blockers, int blockerCount)
 {
-    if(GC == 0 || GR == 0  || BL == NULL) return NULL;
-    
-    Grid_st* grid_s = malloc(sizeof(Grid_st));
-    grid_s->gridCol = GC;
-    grid_s->gridRow = GR;
-    grid_s->grid = calloc(grid_s->gridCol, sizeof(bool*));
-    grid_s->block = calloc(grid_s->gridRow * grid_s->gridCol, sizeof(bool));
+    if (numCols <= 0 || numRows <= 0)
+        return NULL;
 
-    for (int i = 0; i < grid_s->gridCol; i++)
+    Grid_st *grid = malloc(sizeof(Grid_st));
+    if (!grid)
+        return NULL;
+
+    grid->numCols = numCols;
+    grid->numRows = numRows;
+    grid->grid = calloc((size_t)numCols, sizeof(bool *));
+    grid->cellStorage = calloc((size_t)numRows * numCols, sizeof(bool));
+
+    if (!grid->grid || !grid->cellStorage)
     {
-        grid_s->grid[i] = grid_s->block + i * grid_s->gridRow;
+        free(grid->grid);
+        free(grid->cellStorage);
+        free(grid);
+        return NULL;
     }
-    for (int j = 0; j < BLn; j++)
+
+    for (int i = 0; i < numCols; i++)
     {
-        grid_s->grid[BL[j].x][BL[j].y] = true;
+        grid->grid[i] = grid->cellStorage + i * numRows;
     }
-    return grid_s;
-}
 
-
-void printGrid(Grid_st* grid)
-{
-    if (grid != NULL)
+    if (blockers)
     {
-        int GC = grid->gridCol;
-        int GR = grid->gridRow;
-
-        for (int i = 0; i < GR; i++)
+        for (int j = 0; j < blockerCount; j++)
         {
-            for (int j = 0; j < GC; j++)
+            int bx = blockers[j].x;
+            int by = blockers[j].y;
+            if (bx < 0 || bx >= numCols || by < 0 || by >= numRows)
             {
-                printf("%u", (int)grid->grid[j][i]);
+                fprintf(stderr, "Warning: blocker (%d,%d) out of bounds, skipped\n",
+                        bx, by);
+                continue;
             }
-            printf("\n");
+            grid->grid[bx][by] = true;
         }
     }
+
+    return grid;
 }
 
-void cleanUp(Grid_st* grid)
+void printGrid(const Grid_st *grid)
 {
-    free(grid->block);
+    if (!grid)
+        return;
+
+    for (int row = 0; row < grid->numRows; row++)
+    {
+        for (int col = 0; col < grid->numCols; col++)
+        {
+            printf("%d", grid->grid[col][row] ? 1 : 0);
+        }
+        printf("\n");
+    }
+}
+
+void freeGrid(Grid_st *grid)
+{
+    if (!grid)
+        return;
+    free(grid->cellStorage);
     free(grid->grid);
     free(grid);
 }
 
-
-StartPoint_st* findSeedPoints(Grid_st* grid, int maxStep, int* outCount)
+static StartPoint_st *findSeedPoints(BeamCtx_st *ctx, const Grid_st *grid,
+                                     int maxSteps, int *outCount)
 {
-    int maxPoints = 2 * grid->gridCol + 2 * grid->gridRow - 4;
-    StartPoint_st* startPointArr = malloc(sizeof(StartPoint_st) * maxPoints);
-    int startPointIdx = 0;
+    int numCols = grid->numCols;
+    int numRows = grid->numRows;
 
-    for (int x = 0; x < grid->gridCol; x++)
+    int maxPoints;
+    if (numCols == 1 && numRows == 1)
     {
-        if (grid->grid[x][0] == false)
+        maxPoints = 1;
+    }
+    else
+    {
+        maxPoints = numCols * numRows;
+    }
+
+    if (maxPoints <= 0)
+    {
+        *outCount = 0;
+        return NULL;
+    }
+
+    StartPoint_st *seeds = malloc(sizeof(StartPoint_st) * (size_t)maxPoints);
+    if (!seeds)
+    {
+        *outCount = 0;
+        return NULL;
+    }
+
+    int count = 0;
+
+    for (int y = 0; y < numRows; y++)
+    {
+        for (int x = 0; x < numCols; x++)
         {
-            startPointArr[startPointIdx].point.x = x;
-            startPointArr[startPointIdx].point.y = 0;
-            startPointArr[startPointIdx].score = lookaheadBFS_ext(&(Point_st){x, 0}, maxStep, grid->grid);
-            startPointIdx++;
+            if (!grid->grid[x][y])
+            {
+                seeds[count].point = (Point_st){x, y};
+                seeds[count].score = beamLookaheadBFS(ctx, &seeds[count].point,
+                                                      maxSteps, grid->grid);
+                count++;
+            }
         }
     }
 
-    for (int x = 0; x < grid->gridCol; x++)
+    qsort(seeds, (size_t)count, sizeof(StartPoint_st), compareStartPoints);
+    *outCount = count;
+    return seeds;
+}
+
+static void expandBeam(BeamCtx_st *ctx, const Grid_st *grid)
+{
+    ctx->nextBeamSize = 0;
+
+    for (int i = 0; i < ctx->currBeamSize; i++)
     {
-        if (grid->grid[x][grid->gridRow - 1] == false)
+        Candidate_st *cand = ctx->currBeam[i];
+
+        for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
         {
-            startPointArr[startPointIdx].point.x = x;
-            startPointArr[startPointIdx].point.y = grid->gridRow - 1;
-            startPointArr[startPointIdx].score = lookaheadBFS_ext(&(Point_st){x, grid->gridRow - 1}, maxStep, grid->grid);
-            startPointIdx++;
+            int nx = cand->position.x + DELTA_COL[dir];
+            int ny = cand->position.y + DELTA_ROW[dir];
+
+            if (ny < 0 || ny >= grid->numRows)
+                continue;
+            if (nx < 0 || nx >= grid->numCols)
+                continue;
+            if (grid->grid[nx][ny])
+                continue;
+            if (bitCheck(cand->visited, ny, nx, grid->numCols))
+                continue;
+            if (ctx->nextBeamSize >= BEAM_WIDTH * NUM_DIRECTIONS)
+                continue;
+
+            Candidate_st *child = beamCopyCandidate(ctx, cand, nx, ny,
+                                                    grid->grid);
+            if (child)
+            {
+                ctx->nextBeam[ctx->nextBeamSize++] = child;
+            }
         }
     }
+}
 
-    for (int y = 1; y < grid->gridRow - 1; y++)
+static Candidate_st *selectWinner(const BeamCtx_st *ctx)
+{
+    if (ctx->currBeamSize <= 0)
+        return NULL;
+
+    Candidate_st *winner = ctx->currBeam[0];
+    for (int i = 1; i < ctx->currBeamSize; i++)
     {
-        if (grid->grid[0][y] == false)
+        if (ctx->currBeam[i]->score > winner->score)
         {
-            startPointArr[startPointIdx].point.x = 0;
-            startPointArr[startPointIdx].point.y = y;
-            startPointArr[startPointIdx].score = lookaheadBFS_ext(&(Point_st){0, y}, maxStep, grid->grid);
-            startPointIdx++;
+            winner = ctx->currBeam[i];
         }
     }
-
-    for (int y = 1; y < grid->gridRow - 1; y++)
-    {
-        if (grid->grid[grid->gridCol - 1][y] == false)
-        {
-            startPointArr[startPointIdx].point.x = grid->gridCol - 1;
-            startPointArr[startPointIdx].point.y = y;
-            startPointArr[startPointIdx].score = lookaheadBFS_ext(&(Point_st){grid->gridCol - 1, y}, maxStep, grid->grid);
-            startPointIdx++;
-        }
-    }
-
-    qsort(startPointArr, startPointIdx, sizeof(StartPoint_st), compareStartPoints);
-    *outCount = startPointIdx;
-    return startPointArr;
+    return winner;
 }
 
 void findWinner(Grid_st *grid, int maxSteps)
 {
-    candidatesInit(grid->gridCol, grid->gridRow, maxSteps);
-    int pointsCnt = 0;
-    StartPoint_st* points = findSeedPoints(grid, maxSteps, &pointsCnt);
-
-    int dr[] = {-1,  1,  0,  0};
-    int dc[] = { 0,  0, -1,  1};
-    int newCands = B <= pointsCnt ? B : pointsCnt;
-    for (int i = 0; i < newCands; i++)
+    if (!grid || maxSteps <= 0)
     {
-        newCandidate(points[i].point.x, points[i].point.y, maxSteps, grid->grid);
+        printf("No path found\n");
+        return;
     }
 
-    while (currBeam[0]->stepsRemaining > 0)
+    BeamCtx_st *ctx = beamCtxCreate(grid->numCols, grid->numRows, maxSteps);
+    if (!ctx)
+        return;
+
+    int seedCount = 0;
+    StartPoint_st *seeds = findSeedPoints(ctx, grid, maxSteps, &seedCount);
+
+    if (seedCount == 0)
     {
-        nextBeamSize = 0;
-
-        for (int i = 0; i < currBeamSize; i++)
-        {
-            for (int dir = 0; dir < 4; dir++)
-            {
-                Point_st nextPoint = {currBeam[i]->position.x + dc[dir], currBeam[i]->position.y + dr[dir]};
-                if (nextPoint.y < 0 || nextPoint.y >= grid->gridRow) continue;
-                if (nextPoint.x < 0 || nextPoint.x >= grid->gridCol) continue;
-
-                if (grid->grid[nextPoint.x][nextPoint.y] == true) continue;
-
-                if (BIT_CHECK(currBeam[i]->visited, nextPoint.y, nextPoint.x, grid->gridCol)) continue;
-
-                if (nextBeamSize >= B * 4) continue;
-                nextBeam[nextBeamSize++] = copyCandidate(currBeam[i], nextPoint.x, nextPoint.y, grid->grid);
-                
-            }
-            
-        }
-
-        sortBeam(false);
-        for (int j = B; j < nextBeamSize; j++)
-        {
-            freeCandidate(nextBeam[j]);
-        }
-
-        for (int k = 0; k < B; k++)
-        {
-            currBeam[k] = nextBeam[k];
-        }
-        currBeamSize = nextBeamSize < B ? nextBeamSize : B;
-        
+        printf("No path found\n");
+        free(seeds);
+        beamCtxDestroy(ctx);
+        return;
     }
-    
-    Candidate_st* winner = currBeam[0];
-    for (int i = 0; i <= currBeamSize; i++)
+
+    int initialCount = seedCount < 20 ? seedCount : 20;
+    for (int i = 0; i < initialCount; i++)
     {
-        if (currBeam[i]->score > winner->score)
+        Candidate_st *cand = beamNewCandidate(ctx, seeds[i].point.x,
+                                              seeds[i].point.y, maxSteps,
+                                              grid->grid);
+        if (cand && ctx->currBeamSize < BEAM_WIDTH)
         {
-            winner = currBeam[i];
+            ctx->currBeam[ctx->currBeamSize++] = cand;
         }
     }
-    
-    Point_st* path = malloc(sizeof(Point_st) * (maxSteps + 1));
+    free(seeds);
 
-    Candidate_st* current = winner;
+    if (ctx->currBeamSize == 0)
+    {
+        printf("No path found\n");
+        beamCtxDestroy(ctx);
+        return;
+    }
+
+    while (ctx->currBeamSize > 0 && ctx->currBeam[0]->stepsRemaining > 0)
+    {
+        expandBeam(ctx, grid);
+
+        if (ctx->nextBeamSize == 0)
+            break;
+
+        beamSort(ctx, false);
+
+        for (int j = BEAM_WIDTH; j < ctx->nextBeamSize; j++)
+        {
+            candidateReleaseVisited(ctx->nextBeam[j]);
+        }
+
+        int newSize = ctx->nextBeamSize < BEAM_WIDTH
+                          ? ctx->nextBeamSize
+                          : BEAM_WIDTH;
+        for (int k = 0; k < newSize; k++)
+        {
+            ctx->currBeam[k] = ctx->nextBeam[k];
+        }
+        ctx->currBeamSize = newSize;
+    }
+
+    Candidate_st *winner = selectWinner(ctx);
+    if (!winner)
+    {
+        printf("No path found\n");
+        beamCtxDestroy(ctx);
+        return;
+    }
+
+    /* Reconstruct and print path */
+    Point_st *path = malloc(sizeof(Point_st) * (size_t)(maxSteps + 1));
+    if (!path)
+    {
+        beamCtxDestroy(ctx);
+        return;
+    }
+
     int pathLen = 0;
     int idx = maxSteps;
-    while(current != NULL)
+    const Candidate_st *current = winner;
+    while (current != NULL)
     {
-        path[idx].x = current->position.x;
-        path[idx].y = current->position.y;
+        path[idx] = current->position;
         current = current->parent;
         idx--;
         pathLen++;
     }
-    memmove(path, &path[idx + 1], sizeof(Point_st) * pathLen);
-    
-    for(int i = 0; i < pathLen; i++)
-    {
-        printf("(%i,%i)", path[i].x, path[i].y);
-    }
-    printf("\n");
-    candidatesUninit();
-    free(points);
-    free(path);
-}
+    memmove(path, &path[idx + 1], sizeof(Point_st) * (size_t)pathLen);
 
-void printPath(Point_st *path, int pathLen)
-{
     for (int i = 0; i < pathLen; i++)
     {
-        printf("(%i,%i)", path[i].x, path[i].y);
+        printf("(%d,%d), ", path[i].x + 1, path[i].y + 1);
     }
-    printf("\n");
-    
+    printf("%d\n", winner->score);
+
+    free(path);
+    beamCtxDestroy(ctx);
 }
+

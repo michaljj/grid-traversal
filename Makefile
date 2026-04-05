@@ -1,10 +1,12 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -std=c11
+SRC = main.c gridComp.c candidate.c testParams.c
+HDR = gridComp.h candidate.h testParams.h
 
 all: main
 
-main: main.c gridComp.c candidate.c gridComp.h testParams.h candidate.h
-	$(CC) $(CFLAGS) -o main main.c gridComp.c candidate.c -I.
+main: $(SRC) $(HDR)
+	$(CC) $(CFLAGS) -o main $(SRC) -I.
 
 clean:
-	rm -f main main_san
+	rm -f main main.exe

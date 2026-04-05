@@ -1,158 +1,228 @@
 #include "candidate.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
-Candidate_st* currBeam[B];
-Candidate_st* nextBeam[B * 4];
-int currBeamSize = 0;
-int nextBeamSize = 0;
+static const int DELTA_ROW[NUM_DIRECTIONS] = {-1, 1, 0, 0};
+static const int DELTA_COL[NUM_DIRECTIONS] = {0, 0, -1, 1};
 
-static int maxX_g = 0;
-static int maxY_g = 0;
-
-static Candidate_st* pool;
-static int pool_index = 0;
-
-static BFSNode_st* bfs_queue = NULL;
-static uint8_t* bfs_seen  = NULL;
-
-static int compareCandidates(const void* a, const void* b)
+static int compareCandidates(const void *a, const void *b)
 {
-    const Candidate_st* ca = *(const Candidate_st**)a;
-    const Candidate_st* cb = *(const Candidate_st**)b;
-    if (cb->scoreH > ca->scoreH) return  1;
-    if (cb->scoreH < ca->scoreH) return -1;
+    const Candidate_st *ca = *(const Candidate_st *const *)a;
+    const Candidate_st *cb = *(const Candidate_st *const *)b;
+    if (cb->heuristicScore > ca->heuristicScore) return  1;
+    if (cb->heuristicScore < ca->heuristicScore) return -1;
     return 0;
 }
 
-static int lookaheadBFS(Point_st* pos, uint8_t* vis, int stepsLeft, bool** grid)
+static int lookaheadBFS(BeamCtx_st *ctx, const Point_st *pos,
+                        const uint8_t *vis, int stepsLeft, bool **grid)
 {
-    memset(bfs_seen, 0, VISITED_SIZE(maxY_g, maxX_g));
+    int numCols = ctx->numCols;
+    int numRows = ctx->numRows;
+
+    memset(ctx->bfsSeen, 0, VISITED_SIZE(numRows, numCols));
     int head = 0;
     int tail = 0;
-    int bonusRet = 0;
-    int dr[] = {-1,  1,  0,  0};
-    int dc[] = { 0,  0, -1,  1};
+    int bonus = 0;
 
-    bfs_queue[tail++] = (BFSNode_st){pos->y, pos->x, 0};
-    BIT_SET(bfs_seen, pos->y, pos->x, maxX_g);
+    ctx->bfsQueue[tail++] = (BFSNode_st){pos->y, pos->x, 0};
+    bitSet(ctx->bfsSeen, pos->y, pos->x, numCols);
 
     while (head != tail)
     {
-        BFSNode_st curr = bfs_queue[head++];
+        BFSNode_st curr = ctx->bfsQueue[head++];
         if (curr.depth >= stepsLeft)
         {
             continue;
         }
 
-        for (int d = 0; d < 4; d++) {
-            int rowNum = curr.row + dr[d];
-            int colNum = curr.col + dc[d];
-
-            if (rowNum < 0 || rowNum >= maxY_g) continue;
-            if (colNum < 0 || colNum >= maxX_g) continue;
-
-            if (grid[colNum][rowNum] == true) continue;
-
-            if (BIT_CHECK(bfs_seen, rowNum, colNum, maxX_g)) continue;
-
-            BIT_SET(bfs_seen, rowNum, colNum, maxX_g);
-
-            if (!BIT_CHECK(vis, rowNum, colNum, maxX_g))
-                bonusRet++;
-
-            bfs_queue[tail++] = (BFSNode_st){rowNum, colNum, curr.depth + 1};
-        }
-    }
-    return bonusRet;
-}
-
-
-
-void candidatesInit(int maxX, int maxY, int maxStep)
-{
-    maxX_g = maxX;
-    maxY_g = maxY;
-    pool = malloc(sizeof(Candidate_st) * (B + B * 4 * maxStep));
-
-    bfs_queue = malloc(maxX * maxY * sizeof(BFSNode_st));
-    bfs_seen  = malloc(VISITED_SIZE(maxY, maxX));
-}
-
-void candidatesUninit()
-{
-    for (int i = 0; i < pool_index; i++)
-    {
-        if (pool[i].visited != NULL)
+        for (int d = 0; d < NUM_DIRECTIONS; d++)
         {
-            freeCandidate(&pool[i]);
+            int row = curr.row + DELTA_ROW[d];
+            int col = curr.col + DELTA_COL[d];
+
+            if (row < 0 || row >= numRows)
+                continue;
+            if (col < 0 || col >= numCols)
+                continue;
+            if (grid[col][row])
+                continue;
+            if (bitCheck(ctx->bfsSeen, row, col, numCols))
+                continue;
+
+            bitSet(ctx->bfsSeen, row, col, numCols);
+
+            if (!bitCheck(vis, row, col, numCols))
+            {
+                bonus++;
+            }
+
+            ctx->bfsQueue[tail++] = (BFSNode_st){row, col, curr.depth + 1};
         }
-        
     }
-    free(pool);
-    free(bfs_queue);
-    free(bfs_seen);
-    
+    return bonus;
 }
 
-void newCandidate(int x, int y, int maxSteps, bool** grid)
+static Candidate_st *poolAlloc(BeamCtx_st *ctx)
 {
-    Candidate_st* ret = &pool[pool_index++];
-    ret->position.x = x;
-    ret->position.y = y;
-    ret->stepsRemaining = maxSteps - 1;
-    ret->score = 1;
-    ret->parent = NULL;
-    ret->visited = calloc(VISITED_SIZE(maxY_g, maxX_g), sizeof(uint8_t));
-    BIT_SET(ret->visited, y, x, maxX_g);
-    ret->scoreH = lookaheadBFS(&ret->position, ret->visited, ret->stepsRemaining, grid);
-    currBeam[currBeamSize++] = ret;
-}
-
-Candidate_st* copyCandidate(Candidate_st* cand, int x, int y, bool** grid)
-{
-    Candidate_st* ret = &pool[pool_index++];
-    ret->position.x = x;
-    ret->position.y = y;
-    ret->stepsRemaining = cand->stepsRemaining - 1;
-    int visSize = VISITED_SIZE(maxY_g, maxX_g);
-    ret->visited = calloc(visSize, sizeof(uint8_t));
-    memcpy(ret->visited, cand->visited, (visSize * sizeof(uint8_t)));
-    if (!BIT_CHECK(ret->visited, ret->position.y, ret->position.x, maxX_g))
+    if (ctx->poolIndex >= ctx->poolCapacity)
     {
-        ret->score = cand->score + 1;
-        BIT_SET(ret->visited, ret->position.y, ret->position.x, maxX_g);
-    }else
-    {
-        ret->score = cand->score;
+        fprintf(stderr, "Fatal: candidate pool exhausted (%d/%d)\n",
+                ctx->poolIndex, ctx->poolCapacity);
+        return NULL;
     }
-    ret->parent = cand;
-    ret->scoreH = lookaheadBFS(&ret->position, ret->visited, ret->stepsRemaining, grid);
-    return ret;
+    return &ctx->pool[ctx->poolIndex++];
 }
 
-void freeCandidate(Candidate_st* cand)
+BeamCtx_st *beamCtxCreate(int numCols, int numRows, int maxSteps)
 {
-    free(cand->visited);
-    cand->visited = NULL;
+    BeamCtx_st *ctx = calloc(1, sizeof(BeamCtx_st));
+    if (!ctx)
+    {
+        fprintf(stderr, "Fatal: failed to allocate beam context\n");
+        return NULL;
+    }
+
+    ctx->numCols = numCols;
+    ctx->numRows = numRows;
+    ctx->poolCapacity = BEAM_WIDTH + BEAM_WIDTH * NUM_DIRECTIONS * maxSteps;
+    ctx->poolIndex = 0;
+    ctx->currBeamSize = 0;
+    ctx->nextBeamSize = 0;
+
+    ctx->pool = malloc(sizeof(Candidate_st) * (size_t)ctx->poolCapacity);
+    ctx->bfsQueue = malloc((size_t)numCols * numRows * sizeof(BFSNode_st));
+    ctx->bfsSeen = malloc(VISITED_SIZE(numRows, numCols));
+
+    if (!ctx->pool || !ctx->bfsQueue || !ctx->bfsSeen)
+    {
+        fprintf(stderr, "Fatal: failed to allocate beam search buffers\n");
+        free(ctx->pool);
+        free(ctx->bfsQueue);
+        free(ctx->bfsSeen);
+        free(ctx);
+        return NULL;
+    }
+
+    return ctx;
 }
 
-int lookaheadBFS_ext(Point_st *pos, int stepsLeft, bool **grid)
+void beamCtxDestroy(BeamCtx_st *ctx)
 {
-    uint8_t* fakeVis = calloc(VISITED_SIZE(maxY_g, maxX_g), sizeof(uint8_t));
-    int score = lookaheadBFS(pos, fakeVis, stepsLeft, grid);
-    free(fakeVis);
+    if (!ctx)
+        return;
+
+    for (int i = 0; i < ctx->poolIndex; i++)
+    {
+        if (ctx->pool[i].visited != NULL)
+        {
+            free(ctx->pool[i].visited);
+            ctx->pool[i].visited = NULL;
+        }
+    }
+    free(ctx->pool);
+    free(ctx->bfsQueue);
+    free(ctx->bfsSeen);
+    free(ctx);
+}
+
+Candidate_st *beamNewCandidate(BeamCtx_st *ctx, int x, int y,
+                               int maxSteps, bool **grid)
+{
+    Candidate_st *cand = poolAlloc(ctx);
+    if (!cand)
+        return NULL;
+
+    cand->position.x = x;
+    cand->position.y = y;
+    cand->stepsRemaining = maxSteps - 1;
+    cand->score = 1; 
+    cand->parent = NULL;
+
+    cand->visited = calloc(VISITED_SIZE(ctx->numRows, ctx->numCols),
+                           sizeof(uint8_t));
+    if (!cand->visited)
+    {
+        fprintf(stderr, "Fatal: failed to allocate visited bitmap\n");
+        return NULL;
+    }
+
+    bitSet(cand->visited, y, x, ctx->numCols);
+    cand->heuristicScore = lookaheadBFS(ctx, &cand->position, cand->visited,
+                                        cand->stepsRemaining, grid);
+    return cand;
+}
+
+Candidate_st *beamCopyCandidate(BeamCtx_st *ctx, const Candidate_st *cand,
+                                int x, int y, bool **grid)
+{
+    Candidate_st *copy = poolAlloc(ctx);
+    if (!copy)
+        return NULL;
+
+    copy->position.x = x;
+    copy->position.y = y;
+    copy->stepsRemaining = cand->stepsRemaining - 1;
+
+    int visSize = VISITED_SIZE(ctx->numRows, ctx->numCols);
+    copy->visited = malloc(visSize);
+    if (!copy->visited)
+    {
+        fprintf(stderr, "Fatal: failed to allocate visited bitmap\n");
+        return NULL;
+    }
+    memcpy(copy->visited, cand->visited, visSize);
+
+    if (!bitCheck(copy->visited, y, x, ctx->numCols))
+    {
+        copy->score = cand->score + 1;
+    }
+    else
+    {
+        copy->score = cand->score;
+    }
+    bitSet(copy->visited, y, x, ctx->numCols);
+
+    copy->parent = cand;
+    copy->heuristicScore = lookaheadBFS(ctx, &copy->position, copy->visited,
+                                        copy->stepsRemaining, grid);
+    return copy;
+}
+
+void candidateReleaseVisited(Candidate_st *cand)
+{
+    if (cand)
+    {
+        free(cand->visited);
+        cand->visited = NULL;
+    }
+}
+
+int beamLookaheadBFS(BeamCtx_st *ctx, const Point_st *pos,
+                     int stepsLeft, bool **grid)
+{
+    uint8_t *emptyVis = calloc(VISITED_SIZE(ctx->numRows, ctx->numCols),
+                               sizeof(uint8_t));
+    if (!emptyVis)
+        return 0;
+
+    int score = lookaheadBFS(ctx, pos, emptyVis, stepsLeft, grid);
+    free(emptyVis);
     return score;
 }
 
-void sortBeam(bool curr)
+void beamSort(BeamCtx_st *ctx, bool curr)
 {
     if (curr)
     {
-        qsort(currBeam, currBeamSize, sizeof(Candidate_st*), compareCandidates);
-    }else
-    {
-        qsort(nextBeam, nextBeamSize, sizeof(Candidate_st*), compareCandidates);
+        qsort(ctx->currBeam, ctx->currBeamSize,
+              sizeof(Candidate_st *), compareCandidates);
     }
-    
+    else
+    {
+        qsort(ctx->nextBeam, ctx->nextBeamSize,
+              sizeof(Candidate_st *), compareCandidates);
+    }
+
 }

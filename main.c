@@ -1,16 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 #include "testParams.h"
 #include "gridComp.h"
 
-
-int main()
+int main(void)
 {
-    Grid_st* grid = makeGrid(gridC, gridR, blockers, (sizeof(blockers)/sizeof(Point_st)));
-    findWinner(grid, MPs);
-    
-    cleanUp(grid);
+    Grid_st *grid = makeGrid(gridRows, gridCols, blockers, blockerCount);
+    if (!grid)
+    {
+        fprintf(stderr, "Error: failed to create grid\n");
+        return EXIT_FAILURE;
+    }
+
+    findWinner(grid, maxSteps);
+
+    freeGrid(grid);
     return 0;
 }

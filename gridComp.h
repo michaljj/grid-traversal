@@ -4,33 +4,18 @@
 #include <stdbool.h>
 #include "candidate.h"
 
-
 typedef struct Grid_st
 {
-    bool** grid;
-    bool* block;
-    int gridRow;
-    int gridCol;
+    bool **grid;
+    bool *cellStorage;
+    int numRows;
+    int numCols;
+} Grid_st;
 
-}Grid_st;
-
-typedef struct StartPoint_st
-{
-    Point_st point;
-    int score;
-}StartPoint_st;
-
-
-Grid_st* makeGrid(int GC, int GR, Point_st* BL, int BLn);
-
-void printGrid(Grid_st* grid);
-
-void cleanUp(Grid_st* grid);
-
-StartPoint_st* findSeedPoints(Grid_st* grid, int maxStep, int* outCount);
-
+Grid_st *makeGrid(int numRows, int numCols,
+                  const Point_st *blockers, int blockerCount);
+void freeGrid(Grid_st *grid);
+void printGrid(const Grid_st *grid);
 void findWinner(Grid_st *grid, int maxSteps);
 
-void printPath(Point_st* path, int pathLen);
-
-#endif //GRIDCOMP_H
+#endif /* GRIDCOMP_H */
