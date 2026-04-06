@@ -54,10 +54,3 @@ candidate.c/h   Beam context, candidate lifecycle, BFS heuristic, sorting
 testParams.c/h  Configurable grid parameters and obstacle layout
 Makefile        gcc -Wall -Wextra -std=c11
 ```
-
-## Skills Demonstrated
-
-- Algorithm design: beam search, BFS, heuristic search
-- Systems C (C11): manual memory management, pointer arithmetic, bitmask operations
-- Performance-aware data structures: memory pools, flat array layouts, bit packing
-- Clean modular design with clear separation of concerns
