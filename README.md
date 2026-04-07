@@ -54,3 +54,6 @@ candidate.c/h   Beam context, candidate lifecycle, BFS heuristic, sorting
 testParams.c/h  Configurable grid parameters and obstacle layout
 Makefile        gcc -Wall -Wextra -std=c11
 ```
+## See also
+[GridTraversal](https://github.com/michaljj/GridTraversal) — an earlier beam search
+solver for the non-revisiting variant of the same grid traversal problem.
