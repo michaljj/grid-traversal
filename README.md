@@ -54,6 +54,23 @@ candidate.c/h   Beam context, candidate lifecycle, BFS heuristic, sorting
 testParams.c/h  Configurable grid parameters and obstacle layout
 Makefile        gcc -Wall -Wextra -std=c11
 ```
+## Skills Demonstrated
+
+- Algorithm design: beam search, BFS, heuristic search
+- Systems C (C11): manual memory management, pointer arithmetic, bitmask operations
+- Performance-aware data structures: memory pools, flat array layouts, bit packing
+- Clean modular design with clear separation of concerns
+
 ## See also
-[GridTraversal](https://github.com/michaljj/GridTraversal) — an earlier beam search
-solver for the non-revisiting variant of the same grid traversal problem.
+
+[GreedyNU-BFS](https://github.com/michaljj/GreedyNU-BFS) — a greedy
+nearest-unvisited solver for the non-revisiting variant of the same grid
+traversal problem.
+
+---
+
+## License
+
+Source code is licensed under the **PolyForm Noncommercial License 1.0.0**
+(see [`LICENSE.md`](LICENSE.md)). Free for personal, academic, research and
+other noncommercial use; commercial use requires a separate licence.
