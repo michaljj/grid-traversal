@@ -63,7 +63,7 @@ Makefile        gcc -Wall -Wextra -std=c11
 
 ## See also
 
-[GreedyNU-BFS](https://github.com/michaljj/GreedyNU-BFS) — a greedy
+[greedy-nearest-unvisited](https://github.com/michaljj/greedy-nearest-unvisited) — a greedy
 nearest-unvisited solver for the non-revisiting variant of the same grid
 traversal problem.
 
