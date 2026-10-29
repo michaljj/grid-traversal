@@ -71,6 +71,7 @@ traversal problem.
 
 ## License
 
-Source code is licensed under the **PolyForm Noncommercial License 1.0.0**
-(see [`LICENSE.md`](LICENSE.md)). Free for personal, academic, research and
-other noncommercial use; commercial use requires a separate licence.
+Source code is licensed under the **GNU Affero General Public License v3.0**
+(see [`LICENSE.md`](LICENSE.md)). You may use, modify and redistribute it
+freely; if you run a modified version as a network service, you must offer
+its source to users. No warranty.
